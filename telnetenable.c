@@ -50,27 +50,64 @@
 #include "md5.h"
 #include "blowfish.h"
 
-static char output_buf[0x640];
-static BLOWFISH_CTX ctx;
+#define SIGNATURE_LEN 0x10
+#define MAC_LEN 0x10
+#define USERNAME_LEN 0x10
+#define PASSWORD_LEN 0x21
 
 struct PAYLOAD
 {
-  char signature[0x10];
-  char mac[0x10];
-  char username[0x10];
-  char password[0x21];
+  char signature[SIGNATURE_LEN];
+  char mac[MAC_LEN];
+  char username[USERNAME_LEN];
+  char password[PASSWORD_LEN];
   char reserved[0x2F];
-} payload;
+};
 
-int usage(char * progname)
+static int
+sanitize_argv(int argc, char * argv[])
 {
-  printf("\nVersion: 0.4, 2015/02/12\n");
-  printf("Modified to work with newer Negear routers R7000 R7500 by insanid\n");
-  printf("\nUsage:\n%s <host ip> <host mac> <user name> <password>\n\n",progname);
-  return -1;
+  if (argc != 5)
+  {
+    fprintf(stderr,
+           "\nVersion: 0.4, 2015/02/12\n"
+           "Modified to work with newer Negear routers R7000 R7500 by insanid\n"
+           "\nUsage:\n%s <host ip> <host mac> <user name> <password>\n\n", argv[0]);
+    return -1;
+  }
+
+  if (strlen(argv[2]) > MAC_LEN)
+  {
+    fprintf(stderr,
+            "%s: %s: The mac address should be the MAC address of the "
+            "LAN port on your Netgear device, WITHOUT the \":\". e.g. "
+            "\"00:40:5E:21:14:4E\" would be written as \"00405E21144E\"\n",
+            argv[0], argv[2]);
+    return -1;
+  }
+
+  if (strlen(argv[3]) > USERNAME_LEN)
+  {
+    fprintf(stderr,
+            "%s: %s: Too long username. Max length is %d characters.\n"
+            "The username should probably be 'admin'\n",
+            argv[0], argv[3], USERNAME_LEN);
+    return -1;
+  }
+
+  if (strlen(argv[4]) > PASSWORD_LEN)
+  {
+    fprintf(stderr,
+            "%s: %s: Too long password. Max length is %d characters\n",
+            argv[0], argv[4], PASSWORD_LEN);
+    return -1;
+  }
+
+  return 0;
 }
 
-int socket_connect(char * host, char * port)
+static int
+socket_connect(char * host, char * port)
 {
   struct addrinfo hints;
   struct addrinfo * results;
@@ -113,24 +150,22 @@ int socket_connect(char * host, char * port)
   return sock;
 }
 
-int GetOutputLength(unsigned long lInputLong)
+static int
+get_output_length(unsigned long l)
 {
-  unsigned long lVal = lInputLong % 8;
-
-  if (lVal!=0)
-    return lInputLong+8-lVal;
-  else
-    return lInputLong;
+  unsigned long mod8 = l % 8;
+  return mod8 ? l + 8 - mod8 : l;
 }
 
-int EncodeString(BLOWFISH_CTX *ctx,char *pInput,char *pOutput, int lSize)
+static int
+encode_string(BLOWFISH_CTX * ctx, char * pInput, char * pOutput, int lSize)
 {
   int SameDest = 0;
   int lCount;
   int lOutSize;
   int i=0;
 
-  lOutSize = GetOutputLength(lSize);
+  lOutSize = get_output_length(lSize);
   lCount=0;
   while (lCount<lOutSize)
     {
@@ -148,61 +183,50 @@ int EncodeString(BLOWFISH_CTX *ctx,char *pInput,char *pOutput, int lSize)
 }
 
 
-int fill_payload(int argc, char * input[])
+static int
+fill_payload(char * input[], char * output)
 {
-  MD5_CTX MD;
-  char MD5_key[0x10];
-  char secret_key[0x400]="AMBIT_TELNET_ENABLE+";
-  int encoded_len;
+  BLOWFISH_CTX blowfish_context;
+  MD5_CTX md5_context;
+  struct PAYLOAD payload;
+  char secret_key[0x400] = "AMBIT_TELNET_ENABLE+";
 
   memset(&payload, 0, sizeof(payload));
-  // NOTE: struct has .mac behind .signature and is filled here
+
   strcpy(payload.mac, input[2]);
   strcpy(payload.username, input[3]);
+  strcpy(payload.password, input[4]);
 
-  if (argc==5)
-    strcpy(payload.password, input[4]);
+  MD5Init(&md5_context);
+  MD5Update(&md5_context, payload.mac, 0x70);
+  MD5Final(payload.signature, &md5_context);
 
+  strncat(secret_key, input[4], sizeof(secret_key) - strlen(secret_key) - 1);
 
-  MD5Init(&MD);
-  MD5Update(&MD,payload.mac,0x70);
-  MD5Final(MD5_key,&MD);
-
-  strncpy(payload.signature, MD5_key, sizeof(payload.signature));
-  // NOTE: so why concatenate outside of the .signature boundary again
-  //       using strcat? deleting this line would keep the payload the same and not
-  //       cause some funky abort() or segmentation fault on newer gcc's
-  // dj: this was attempting to put back the first byte of the MAC address
-  // dj: which was getting stomped by the strcpy of the MD5_key above
-  // dj: a better fix is to use strncpy to avoid the stomping in the 1st place
-  //  strcat(payload.signature, input[2]);
-
-  if (argc==5)
-    strncat(secret_key,input[4],sizeof(secret_key) - strlen(secret_key) - 1);
-
-  Blowfish_Init(&ctx,secret_key,strlen(secret_key));
-
-  encoded_len = EncodeString(&ctx,(char*)&payload,(char*)&output_buf,0x80);
-
-  return encoded_len;
+  Blowfish_Init(&blowfish_context, secret_key, strlen(secret_key));
+  return encode_string(&blowfish_context, (char*)&payload, output, 0x80);
 }
 
-int main(int argc, char * argv[])
+int
+main(int argc, char * argv[])
 {
   char * telnet_port = "23";
+  char buf[0x640];
   int datasize;
   int sock;
   int i;
 
-  if (argc != 5)
-    return usage(argv[0]);
+  memset(buf, 0, sizeof(buf));
 
-  datasize = fill_payload(argc, argv);
+  if (sanitize_argv(argc, argv) != 0)
+    return -1;
+
+  datasize = fill_payload(argv, buf);
   if (datasize == -1)
     return -1;
 
   sock = socket_connect(argv[1], telnet_port);
-  write(sock, output_buf, datasize);
+  write(sock, buf, datasize);
   close(sock);
 
   printf("\nPayload has been sent to Netgear router.\n");
