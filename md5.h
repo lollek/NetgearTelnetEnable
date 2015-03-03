@@ -18,4 +18,4 @@ void MD5Update(MD5_CTX *context, unsigned char const *buf, unsigned len);
 /* finalize hash */
 void MD5Final(unsigned char *digest, MD5_CTX *context);
 
-#endif // _MD5_H_
+#endif /* _MD5_H_ */
