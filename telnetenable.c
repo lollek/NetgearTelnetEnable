@@ -71,7 +71,7 @@ sanitize_argv(int argc, char * argv[])
   if (argc != 5)
   {
     fprintf(stderr,
-           "\nVersion: 0.4, 2015/02/12\n"
+           "\nVersion: 0.4.1, 2015/03/03\n"
            "Modified to work with newer Negear routers R7000 R7500 by insanid\n"
            "\nUsage:\n%s <host ip> <host mac> <user name> <password>\n\n", argv[0]);
     return -1;
