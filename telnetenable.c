@@ -43,6 +43,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -112,7 +113,6 @@ socket_connect(char * host, char * port)
   struct addrinfo hints;
   struct addrinfo * results;
   struct addrinfo * i;
-  struct sockaddr_in addr;
   int sock = -1;
   int status;
 
@@ -160,7 +160,6 @@ get_output_length(unsigned long l)
 static int
 encode_string(BLOWFISH_CTX * ctx, char * pInput, char * pOutput, int lSize)
 {
-  int SameDest = 0;
   int lCount;
   int lOutSize;
   int i=0;
@@ -198,13 +197,13 @@ fill_payload(char * input[], char * output)
   strcpy(payload.password, input[4]);
 
   MD5Init(&md5_context);
-  MD5Update(&md5_context, payload.mac, 0x70);
-  MD5Final(payload.signature, &md5_context);
+  MD5Update(&md5_context, (unsigned char *)payload.mac, 0x70);
+  MD5Final((unsigned char *)payload.signature, &md5_context);
 
   strncat(secret_key, input[4], sizeof(secret_key) - strlen(secret_key) - 1);
 
-  Blowfish_Init(&blowfish_context, secret_key, strlen(secret_key));
-  return encode_string(&blowfish_context, (char*)&payload, output, 0x80);
+  Blowfish_Init(&blowfish_context, (unsigned char *)secret_key, strlen(secret_key));
+  return encode_string(&blowfish_context, (char *)&payload, output, 0x80);
 }
 
 int
@@ -214,7 +213,6 @@ main(int argc, char * argv[])
   char buf[0x640];
   int datasize;
   int sock;
-  int i;
 
   memset(buf, 0, sizeof(buf));
 
