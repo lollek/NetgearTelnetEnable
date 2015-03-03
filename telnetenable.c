@@ -37,7 +37,7 @@
   http://www.opentom.org/Mkttimage
 */
 
-//#include <netinet/tcp.h>
+#include <arpa/inet.h>
 #include <netinet/udp.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -45,14 +45,12 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-//#include <process.h>
 #include <string.h>
 
 #include "md5.h"
 #include "blowfish.h"
 
 static char output_buf[0x640];
-
 static BLOWFISH_CTX ctx;
 
 struct PAYLOAD
@@ -64,36 +62,54 @@ struct PAYLOAD
   char reserved[0x2F];
 } payload;
 
-void usage(char * progname)
+int usage(char * progname)
 {
   printf("\nVersion: 0.4, 2015/02/12\n");
   printf("Modified to work with newer Negear routers R7000 R7500 by insanid\n");
   printf("\nUsage:\n%s <host ip> <host mac> <user name> <password>\n\n",progname);
-  exit(-1);
+  return -1;
 }
 
-int socket_connect(char *host, in_port_t port){
-  struct hostent *hp;
+int socket_connect(char * host, char * port)
+{
+  struct addrinfo hints;
+  struct addrinfo * results;
+  struct addrinfo * i;
   struct sockaddr_in addr;
-  int on = 1, sock;
+  int sock = -1;
+  int status;
 
-  if((hp = gethostbyname(host)) == NULL){
-    herror("gethostbyname");
-    exit(1);
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_DGRAM;
+
+  status = getaddrinfo(host, port, &hints, &results);
+  if (status != 0)
+  {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+    return -1;
   }
-  bcopy(hp->h_addr, &addr.sin_addr, hp->h_length);
-  addr.sin_port = htons(port);
-  addr.sin_family = AF_INET;
-  sock = socket(AF_INET, SOCK_DGRAM, 0);
-  setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(int));
-  if(sock == -1){
-    perror("setsockopt");
-    exit(1);
+
+  for (i = results; i != NULL; i = i->ai_next)
+  {
+    sock = socket(i->ai_family, i->ai_socktype, i->ai_protocol);
+    if (sock == -1)
+    {
+      perror("socket");
+      continue;
+    }
+
+    status = connect(sock, i->ai_addr, i->ai_addrlen);
+    if (status != -1)
+      break;
+    else
+    {
+      perror("connect");
+      close(sock);
+    }
   }
-  if(connect(sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == -1){
-    perror("connect");
-    exit(1);
-  }
+
+  freeaddrinfo(results);
   return sock;
 }
 
@@ -171,20 +187,21 @@ int fill_payload(int argc, char * input[])
   return encoded_len;
 }
 
-int PORT = 23;
-
 int main(int argc, char * argv[])
 {
-
+  char * telnet_port = "23";
   int datasize;
+  int sock;
   int i;
 
-  if (argc!=5)
-    usage(argv[0]);
+  if (argc != 5)
+    return usage(argv[0]);
 
   datasize = fill_payload(argc, argv);
+  if (datasize == -1)
+    return -1;
 
-  int sock = socket_connect(argv[1],PORT);
+  sock = socket_connect(argv[1], telnet_port);
   write(sock, output_buf, datasize);
   close(sock);
 
