@@ -83,7 +83,7 @@ sanitize_argv(int argc, char * argv[])
     return -1;
   }
 
-  if (strlen(argv[2]) > MAC_LEN)
+  if (strlen(argv[2]) >= MAC_LEN)
   {
     fprintf(stderr,
             "%s: %s: The mac address should be the MAC address of the "
@@ -93,24 +93,24 @@ sanitize_argv(int argc, char * argv[])
     return -1;
   }
 
-  if (strlen(argv[3]) > USERNAME_LEN)
+  if (strlen(argv[3]) >= USERNAME_LEN)
   {
     fprintf(stderr,
             "%s: %s: Too long username. Max length is %d characters.\n"
             "The username should probably be 'admin'\n",
-            argv[0], argv[3], USERNAME_LEN);
+            argv[0], argv[3], USERNAME_LEN -1);
     return -1;
   }
 
-  if (strlen(argv[4]) > PASSWORD_LEN)
+  if (strlen(argv[4]) >= PASSWORD_LEN)
   {
     fprintf(stderr,
             "%s: %s: Too long password. Max length is %d characters\n",
-            argv[0], argv[4], PASSWORD_LEN);
+            argv[0], argv[4], PASSWORD_LEN -1);
     return -1;
   }
 
-  return 0;
+  return (!strcmp(argv[1], "DEBUG")) ? 2 : 0;
 }
 
 static int
@@ -216,20 +216,36 @@ int
 main(int argc, char * argv[])
 {
   char * telnet_port = "23";
+  char * debug_port = "50023";
+  char * hostname;
+  char * port;
   char buf[0x640];
   int datasize;
   int sock;
 
   memset(buf, 0, sizeof(buf));
 
-  if (sanitize_argv(argc, argv) != 0)
-    return -1;
+  switch (sanitize_argv(argc, argv))
+  {
+    case 0:
+      hostname = argv[1];
+      port = telnet_port;
+      break;
+
+    case 2:
+      hostname = "localhost";
+      port = debug_port;
+      break;
+
+    default:
+      return -1;
+  }
 
   datasize = fill_payload(argv, buf);
   if (datasize == -1)
     return -1;
 
-  sock = socket_connect(argv[1], telnet_port);
+  sock = socket_connect(hostname, port);
   write(sock, buf, datasize);
   close(sock);
 
