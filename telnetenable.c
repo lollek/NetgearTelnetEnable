@@ -37,13 +37,19 @@
   http://www.opentom.org/Mkttimage
 */
 
+#ifdef _WIN32
+/* Will add this later. For now, use telnetenable-win.c */
+#endif
+
+#ifdef __gnu_linux__
 #include <arpa/inet.h>
 #include <netinet/udp.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-
 #include <unistd.h>
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
