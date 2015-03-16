@@ -1,5 +1,14 @@
-telnetenable : blowfish.c blowfish.h md5.c md5.h telnetenable.c
-	cc -o telnetenable telnetenable.c blowfish.c md5.c
+CFLAGS=-Wall -Wextra -pedantic -g
+
+all: telnetenable
+.PHONY: all
+
+telnetenable: md5.o blowfish.o telnetenable.o
+	$(CC) $(CFLAGS) -o $@ $^
+
+test: clean telnetenable
+	./tests/tests.pl
+.PHONY: test
 
 clean :
-	rm telnetenable
+	$(RM) telnetenable *.o
